@@ -1,0 +1,94 @@
+[project]
+name = "adw"
+version = "0.1.0"
+description = "AI Digital Workforce — Execution Record Core"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115,<0.120",
+    "uvicorn[standard]>=0.34,<0.40",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.6,<3",
+    "sqlalchemy>=2.0.36,<2.1",
+    "psycopg[binary]>=3.2,<4",
+    "alembic>=1.14,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-cov>=6.0,<8",
+    "httpx>=0.28,<0.29",
+    "mypy>=1.13,<2",
+    "ruff>=0.8,<0.15",
+    "pip-audit>=2.7,<3",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# ---------------------------------------------------------------------------
+# Type checking — G1: mypy --strict fails the build.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+warn_unreachable = true
+warn_no_return = true
+disallow_any_unimported = true
+show_error_codes = true
+pretty = true
+# Every `type: ignore` must name the code it suppresses, so suppressions stay auditable.
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+
+[[tool.mypy.overrides]]
+module = ["alembic.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Lint and format
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # import sorting
+    "B",    # bugbear
+    "UP",   # pyupgrade
+    "S",    # bandit — security
+    "DTZ",  # flake8-datetimez — supports G6: no naive host clocks
+    "T20",  # no print()
+    "RUF",
+]
+ignore = [
+    "S101",  # assert is expected in tests; see per-file ignores for the rest
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]  # hard-coded test credentials are fine in tests
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "unit: no external dependencies",
+    "integration: requires a live PostgreSQL database",
+    "security: isolation, privilege, and redaction guarantees",
+    "scenario: end-to-end execution record proof",
+]
