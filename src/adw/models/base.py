@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, MetaData, func, text
+from sqlalchemy import DateTime, ForeignKey, MetaData, func, text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -37,6 +37,7 @@ class CreatedAtMixin:
     """A creation timestamp issued by the database."""
 
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         server_default=func.transaction_timestamp(),
         nullable=False,
     )
@@ -46,6 +47,7 @@ class UpdatedAtMixin:
     """A mutation timestamp issued by the database."""
 
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         server_default=func.transaction_timestamp(),
         onupdate=func.transaction_timestamp(),
         nullable=False,

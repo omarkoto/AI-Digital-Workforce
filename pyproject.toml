@@ -15,6 +15,10 @@ dependencies = [
     # Python, no transitive dependencies, ships py.typed. Deliberately not
     # implemented in-house: this sits directly under the audit chain.
     "rfc8785>=0.1.4,<0.2",
+    # Authenticated encryption for audit payloads (D1, D25). The chain stores
+    # ciphertext and hashes its digest, never plaintext (I12), so a tenant key
+    # can be destroyed without making the chain unverifiable.
+    "cryptography>=44,<47",
 ]
 
 [project.optional-dependencies]
@@ -84,6 +88,9 @@ ignore = [
 # constant, never caller input. Parameter binding is used for every value; only
 # the identifier is interpolated, which SQL has no placeholder for.
 "tests/security/**" = ["S105", "S106", "S608"]
+# Migrations compose DDL, policies, and grants around table names that are
+# module constants, never caller input. SQL has no placeholder for an identifier.
+"migrations/**" = ["S608"]
 
 [tool.ruff.format]
 quote-style = "double"

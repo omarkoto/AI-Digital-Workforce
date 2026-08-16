@@ -3,9 +3,9 @@
 The only writer of ``Task.state``. Centralising it means the machine cannot be
 bypassed by a stray update somewhere else in the codebase.
 
-Task 5 adds the audit chain record to the same transaction, so that a transition
-and its audit entry can never diverge (G2). The transaction boundary is already
-the caller's ``tenant_session``, so that addition needs no restructuring here.
+**The transition and its audit record share one transaction** (G2), so the two
+can never diverge: either both are durable or neither happened. The caller's
+``tenant_session`` is that transaction; this module does not open its own.
 """
 
 from __future__ import annotations
@@ -19,6 +19,10 @@ from adw.domain.errors import IllegalTransitionError
 from adw.domain.states import TaskState
 from adw.domain.transitions import assert_task_transition
 from adw.models.task import MAX_REWORK_ATTEMPTS, Task
+from adw.ports.keystore import KeyStore
+from adw.services import audit_writer
+
+EVENT_TASK_TRANSITIONED = "task.transitioned"
 
 
 def get_task(session: Session, task_id: UUID) -> Task | None:
@@ -30,14 +34,26 @@ def get_task(session: Session, task_id: UUID) -> Task | None:
     return session.scalar(select(Task).where(Task.id == task_id))
 
 
-def transition(session: Session, task: Task, proposed: TaskState) -> Task:
-    """Move ``task`` to ``proposed``, or refuse.
+def transition(
+    session: Session,
+    task: Task,
+    proposed: TaskState,
+    *,
+    keystore: KeyStore,
+    actor_id: str,
+) -> Task:
+    """Move ``task`` to ``proposed``, recording it in the audit chain, or refuse.
+
+    The audit record is written in the caller's transaction (G2). A refused
+    transition writes nothing: the record describes what happened, and a rejected
+    move did not happen.
 
     Raises:
         IllegalTransitionError: if the machine does not allow the move, or if the
             move would exceed the rework limit in D11.
     """
     assert_task_transition(task.state, proposed)
+    previous = task.state
 
     if task.state is TaskState.REWORKING and proposed is TaskState.QUEUED:
         # The machine permits both REWORKING -> QUEUED and REWORKING -> BLOCKED.
@@ -54,4 +70,19 @@ def transition(session: Session, task: Task, proposed: TaskState) -> Task:
 
     task.state = proposed
     session.flush()
+
+    audit_writer.append(
+        session,
+        tenant_id=task.tenant_id,
+        event_type=EVENT_TASK_TRANSITIONED,
+        actor_id=actor_id,
+        payload={
+            "task_id": str(task.id),
+            "execution_id": str(task.execution_id),
+            "from_state": previous.value,
+            "to_state": proposed.value,
+            "attempt_no": task.attempt_no,
+        },
+        keystore=keystore,
+    )
     return task

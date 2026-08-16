@@ -18,6 +18,9 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.orm import Session
+
+from adw.adapters.keystore_local import LocalKeyStore
 
 PROBE_TABLE = "_rls_probe"
 
@@ -91,6 +94,91 @@ def probe_table(owner_engine: Engine) -> Iterator[str]:
 
     with owner_engine.begin() as connection:
         connection.execute(text(f"DROP TABLE IF EXISTS {PROBE_TABLE}"))
+
+
+@pytest.fixture(scope="session")
+def anchor_engine() -> Iterator[Engine]:
+    """Connection as adw_anchor — may read chain heads and nothing else (I13)."""
+    engine = _engine_or_skip("PYTEST_ANCHOR_DATABASE_URL")
+    yield engine
+    engine.dispose()
+
+
+def _alembic_config() -> object:
+    from alembic.config import Config
+
+    root = Path(__file__).resolve().parents[2]
+    config = Config(str(root / "alembic.ini"))
+    config.set_main_option("script_location", str(root / "migrations"))
+    return config
+
+
+@pytest.fixture
+def migrated_schema(owner_engine: Engine) -> Iterator[None]:
+    """Apply every migration, then roll all the way back."""
+    from alembic import command
+
+    config = _alembic_config()
+    command.upgrade(config, "head")  # type: ignore[arg-type]
+    yield
+    command.downgrade(config, "base")  # type: ignore[arg-type]
+
+
+@pytest.fixture
+def dev_keystore(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[LocalKeyStore]:
+    """A throwaway key store. Development-only by construction."""
+    from adw import config as app_config
+
+    monkeypatch.setenv("ADW_APP_ENV", "dev")
+    monkeypatch.setenv("ADW_DATABASE_URL", os.environ["ADW_DATABASE_URL"])
+    monkeypatch.setenv("ADW_MIGRATION_DATABASE_URL", os.environ["ADW_MIGRATION_DATABASE_URL"])
+    app_config.get_settings.cache_clear()
+    store = LocalKeyStore(tmp_path / "keys.json")
+    yield store
+    app_config.get_settings.cache_clear()
+
+
+@pytest.fixture
+def chain_session(owner_engine: Engine, migrated_schema: None) -> Iterator[Session]:
+    """A tenant-scoped session for tenant A, with the tenant row seeded."""
+    with Session(owner_engine) as session:
+        session.execute(text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(TENANT_A)})
+        session.execute(
+            text("INSERT INTO tenant (id, slug, name) VALUES (:i, 'northwind', 'Northwind')"),
+            {"i": TENANT_A},
+        )
+        session.flush()
+        yield session
+        session.rollback()
+
+
+@pytest.fixture
+def seeded_chain(
+    owner_engine: Engine, migrated_schema: None, dev_keystore: LocalKeyStore
+) -> Iterator[None]:
+    """Two tenants with chains of different lengths, committed."""
+    from adw.services import audit_writer
+
+    for tenant, slug, count in ((TENANT_A, "northwind", 2), (TENANT_B, "contoso", 1)):
+        with Session(owner_engine) as session:
+            session.execute(
+                text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant)}
+            )
+            session.execute(
+                text("INSERT INTO tenant (id, slug, name) VALUES (:i, :s, :n)"),
+                {"i": tenant, "s": slug, "n": slug.title()},
+            )
+            for _ in range(count):
+                audit_writer.append(
+                    session,
+                    tenant_id=tenant,
+                    event_type="task.transitioned",
+                    actor_id="agent:seed",
+                    payload={"detail": slug},
+                    keystore=dev_keystore,
+                )
+            session.commit()
+    yield
 
 
 @pytest.fixture

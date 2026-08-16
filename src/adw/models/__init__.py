@@ -5,6 +5,12 @@ Importing this package registers every model on ``Base.metadata``, which is what
 autogenerate and to the schema tests.
 """
 
+from adw.models.audit import (
+    EVENT_TIME_ANOMALY,
+    PLATFORM_TENANT_ID,
+    AuditChainHead,
+    AuditChainRecord,
+)
 from adw.models.base import Base
 from adw.models.definition import (
     AgentDefinition,
@@ -17,9 +23,13 @@ from adw.models.task import MAX_REWORK_ATTEMPTS, Task, TaskSkillPin
 from adw.models.tenant import Tenant
 
 __all__ = [
+    "EVENT_TIME_ANOMALY",
     "MAX_REWORK_ATTEMPTS",
+    "PLATFORM_TENANT_ID",
     "AgentDefinition",
     "AgentDefinitionVersion",
+    "AuditChainHead",
+    "AuditChainRecord",
     "Base",
     "Execution",
     "Skill",
@@ -29,7 +39,9 @@ __all__ = [
     "Tenant",
 ]
 
-TENANT_SCOPED_TABLES = frozenset({"tenant", "execution", "task", "task_skill_pin"})
+TENANT_SCOPED_TABLES = frozenset(
+    {"tenant", "execution", "task", "task_skill_pin", "chain_record", "chain_head"}
+)
 """Tables that must carry row-level security.
 
 ``tenant`` is included although it has no ``tenant_id``: its policy compares
