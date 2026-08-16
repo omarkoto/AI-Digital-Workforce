@@ -5,6 +5,7 @@ Importing this package registers every model on ``Base.metadata``, which is what
 autogenerate and to the schema tests.
 """
 
+from adw.models.anchor import ANCHOR_HEAD_ID, AnchorHead, AnchorRecord
 from adw.models.audit import (
     EVENT_TIME_ANOMALY,
     PLATFORM_TENANT_ID,
@@ -23,11 +24,14 @@ from adw.models.task import MAX_REWORK_ATTEMPTS, Task, TaskSkillPin
 from adw.models.tenant import Tenant
 
 __all__ = [
+    "ANCHOR_HEAD_ID",
     "EVENT_TIME_ANOMALY",
     "MAX_REWORK_ATTEMPTS",
     "PLATFORM_TENANT_ID",
     "AgentDefinition",
     "AgentDefinitionVersion",
+    "AnchorHead",
+    "AnchorRecord",
     "AuditChainHead",
     "AuditChainRecord",
     "Base",

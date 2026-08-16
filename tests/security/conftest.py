@@ -12,7 +12,7 @@ solely to give RLS something to filter while the domain schema is still empty.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -150,6 +150,60 @@ def chain_session(owner_engine: Engine, migrated_schema: None) -> Iterator[Sessi
         session.flush()
         yield session
         session.rollback()
+
+
+@pytest.fixture
+def anchor_session(anchor_engine: Engine, migrated_schema: None) -> Iterator[Session]:
+    """A session as adw_anchor — the only role that reads chain heads across tenants.
+
+    Anchoring cannot run as the owner: chain_head forces row-level security and
+    the owner has only the tenant policy, so without a tenant context it sees
+    nothing. The role-scoped policy created in migration 0002 is what makes the
+    cross-tenant read possible, and only for this role.
+    """
+    with Session(anchor_engine) as session:
+        yield session
+        session.rollback()
+
+
+def commit_chain(
+    owner_engine: Engine, keystore: LocalKeyStore, tenant: UUID, slug: str, count: int
+) -> None:
+    """Seed and commit a tenant with ``count`` chain records."""
+    from adw.services import audit_writer
+
+    with Session(owner_engine) as session:
+        session.execute(text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant)})
+        exists = session.execute(
+            text("SELECT count(*) FROM tenant WHERE id = :i"), {"i": tenant}
+        ).scalar_one()
+        if not exists:
+            session.execute(
+                text("INSERT INTO tenant (id, slug, name) VALUES (:i, :s, :n)"),
+                {"i": tenant, "s": slug, "n": slug.title()},
+            )
+        for _ in range(count):
+            audit_writer.append(
+                session,
+                tenant_id=tenant,
+                event_type="task.transitioned",
+                actor_id="agent:seed",
+                payload={"detail": slug},
+                keystore=keystore,
+            )
+        session.commit()
+
+
+@pytest.fixture
+def tenant_session_factory(owner_engine: Engine) -> Callable[[UUID], Session]:
+    """Open a committed-visible session scoped to one tenant."""
+
+    def _open(tenant: UUID) -> Session:
+        session = Session(owner_engine)
+        session.execute(text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant)})
+        return session
+
+    return _open
 
 
 @pytest.fixture
