@@ -101,10 +101,10 @@ def test_cross_tenant_task_write_is_rejected(app_engine: Engine, seeded_schema: 
 
 
 def test_rework_limit_is_enforced_by_the_database(app_engine: Engine, seeded_schema: None) -> None:
-    """D11 is a CHECK constraint, not only a service rule."""
+    """D11 is a CHECK constraint. Three rework loops means a fourth attempt is valid."""
     with pytest.raises(DBAPIError, match="attempt_no"), app_engine.begin() as conn:
         conn.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": str(TENANT_A)})
-        conn.execute(text("UPDATE task SET attempt_no = 4"))
+        conn.execute(text("UPDATE task SET attempt_no = 5"))
 
 
 def test_every_new_tenant_table_has_complete_rls(owner_engine: Engine, seeded_schema: None) -> None:

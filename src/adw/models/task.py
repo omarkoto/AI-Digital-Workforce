@@ -18,8 +18,13 @@ from adw.domain.ids import new_id
 from adw.domain.states import TaskState
 from adw.models.base import Base, CreatedAtMixin, TenantScopedMixin, UpdatedAtMixin
 
-MAX_REWORK_ATTEMPTS = 3
-"""D11. Exceeding it pauses the task into Needs Attention rather than retrying."""
+MAX_ATTEMPTS = 4
+"""D11 permits three rework loops, so a task can reach a fourth attempt.
+
+The budget itself is counted from the append-only rework rows, which are the
+single authority. This column mirrors them so the current attempt is readable
+without a join.
+"""
 
 
 class Task(Base, TenantScopedMixin, CreatedAtMixin, UpdatedAtMixin):
@@ -29,7 +34,7 @@ class Task(Base, TenantScopedMixin, CreatedAtMixin, UpdatedAtMixin):
     __table_args__ = (
         UniqueConstraint("execution_id", "sequence"),
         CheckConstraint(
-            f"attempt_no BETWEEN 1 AND {MAX_REWORK_ATTEMPTS}",
+            f"attempt_no BETWEEN 1 AND {MAX_ATTEMPTS}",
             name="attempt_no_within_rework_limit",
         ),
     )
@@ -67,7 +72,7 @@ class Task(Base, TenantScopedMixin, CreatedAtMixin, UpdatedAtMixin):
     )
 
     attempt_no: Mapped[int] = mapped_column(default=1, nullable=False)
-    """Rework attempts consumed, capped in the database by D11."""
+    """Which attempt this task is on. Maintained by the rework controller."""
 
     skill_pins: Mapped[list[TaskSkillPin]] = relationship(
         back_populates="task",

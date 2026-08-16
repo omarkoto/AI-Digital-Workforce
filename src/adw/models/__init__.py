@@ -27,19 +27,27 @@ from adw.models.definition import (
     SkillVersion,
 )
 from adw.models.execution import Execution
-from adw.models.task import MAX_REWORK_ATTEMPTS, Task, TaskSkillPin
+from adw.models.gate import (
+    ApprovalItem,
+    GateDecision,
+    GateDefinition,
+    GateDefinitionVersion,
+    ReworkAttempt,
+)
+from adw.models.task import MAX_ATTEMPTS, Task, TaskSkillPin
 from adw.models.tenant import Tenant
 
 __all__ = [
     "ANCHOR_HEAD_ID",
     "EVENT_TIME_ANOMALY",
-    "MAX_REWORK_ATTEMPTS",
+    "MAX_ATTEMPTS",
     "PLATFORM_TENANT_ID",
     "Action",
     "AgentDefinition",
     "AgentDefinitionVersion",
     "AnchorHead",
     "AnchorRecord",
+    "ApprovalItem",
     "Artifact",
     "ArtifactDefinition",
     "ArtifactDefinitionVersion",
@@ -49,6 +57,10 @@ __all__ = [
     "Base",
     "Evidence",
     "Execution",
+    "GateDecision",
+    "GateDefinition",
+    "GateDefinitionVersion",
+    "ReworkAttempt",
     "Skill",
     "SkillVersion",
     "Task",
@@ -68,6 +80,9 @@ TENANT_SCOPED_TABLES = frozenset(
         "evidence",
         "artifact",
         "artifact_version",
+        "gate_decision",
+        "rework_attempt",
+        "approval_item",
     }
 )
 """Tables that must carry row-level security.
@@ -84,6 +99,8 @@ PLATFORM_SCOPED_TABLES = frozenset(
         "skill_version",
         "artifact_definition",
         "artifact_definition_version",
+        "gate_definition",
+        "gate_definition_version",
     }
 )
 """Definition tables. Platform-curated, no tenant data, outside tenant scope per D30."""

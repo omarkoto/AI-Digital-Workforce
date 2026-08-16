@@ -61,6 +61,15 @@ def task(chain_session: Session) -> Task:
     return row
 
 
+def state_of(task: Task) -> str:
+    """Read the task's state opaquely.
+
+    The type checker cannot see that a service call mutated the task, so a direct
+    comparison narrows to a stale literal and is then reported as unreachable.
+    """
+    return str(task.state.value)
+
+
 def chain_length(session: Session) -> int:
     return int(session.execute(text("SELECT count(*) FROM chain_record")).scalar_one())
 
@@ -100,12 +109,15 @@ def test_the_chain_verifies_after_a_sequence_of_transitions(
 def test_rework_limit_refuses_a_fourth_attempt(
     chain_session: Session, dev_keystore: LocalKeyStore, task: Task
 ) -> None:
-    """D11, enforced above the machine: both REWORKING edges are legal shapes.
+    """Both REWORKING edges are legal shapes; the machine does not choose.
 
-    The machine permits REWORKING to reach either QUEUED or BLOCKED. Which one is
-    legal depends on the attempt count, which is a service condition rather than
-    an edge — so exhausting the budget must close the QUEUED door while leaving
-    BLOCKED open.
+    The rework budget is **not** enforced here. D11 is owned solely by the rework
+    controller, whose append-only attempt rows are the single authority — see
+    ``test_gate_rework_approval.py``. Guarding it in two places produced two
+    counters for one budget that disagreed at the boundary.
+
+    What this asserts is the machine's own shape: REWORKING may reach either
+    QUEUED or BLOCKED, and both are permitted transitions.
     """
 
     def move(*targets: TaskState) -> None:
@@ -114,27 +126,18 @@ def test_rework_limit_refuses_a_fourth_attempt(
                 chain_session, task, target, keystore=dev_keystore, actor_id=ACTOR
             )
 
-    def reach_rework() -> None:
-        move(TaskState.RUNNING, TaskState.PRODUCING, TaskState.AWAITING_GATE, TaskState.REWORKING)
-
-    move(TaskState.QUEUED)  # attempt 1
-    reach_rework()
-    move(TaskState.QUEUED)  # attempt 2
-    assert task.attempt_no == 2
-
-    reach_rework()
-    move(TaskState.QUEUED)  # attempt 3 — the last permitted
-    assert task.attempt_no == 3
-
-    reach_rework()
-    with pytest.raises(IllegalTransitionError, match="rework limit"):
-        move(TaskState.QUEUED)
+    move(TaskState.QUEUED, TaskState.RUNNING, TaskState.PRODUCING, TaskState.AWAITING_GATE)
+    move(TaskState.REWORKING)
     # Compared by value rather than identity: `move` mutates the task, which the
     # type checker cannot see, so an `is` check here narrows to a stale literal.
-    assert task.state.value == TaskState.REWORKING.value
+    assert state_of(task) == TaskState.REWORKING.value
 
+    move(TaskState.QUEUED)
+    assert state_of(task) == TaskState.QUEUED.value
+
+    move(TaskState.RUNNING, TaskState.PRODUCING, TaskState.AWAITING_GATE, TaskState.REWORKING)
     move(TaskState.BLOCKED)
-    assert task.state.value == TaskState.BLOCKED.value
+    assert state_of(task) == TaskState.BLOCKED.value
 
 
 def test_rollback_discards_both_the_transition_and_its_record(

@@ -15,10 +15,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from adw.domain.errors import IllegalTransitionError
 from adw.domain.states import TaskState
 from adw.domain.transitions import assert_task_transition
-from adw.models.task import MAX_REWORK_ATTEMPTS, Task
+from adw.models.task import Task
 from adw.ports.keystore import KeyStore
 from adw.services import audit_writer
 
@@ -54,19 +53,10 @@ def transition(
     """
     assert_task_transition(task.state, proposed)
     previous = task.state
-
-    if task.state is TaskState.REWORKING and proposed is TaskState.QUEUED:
-        # The machine permits both REWORKING -> QUEUED and REWORKING -> BLOCKED.
-        # Which one is legal here depends on the attempt count, which is a
-        # service-level condition rather than an edge in the machine (D11).
-        if task.attempt_no >= MAX_REWORK_ATTEMPTS:
-            msg = (
-                f"rework limit reached: task has used {task.attempt_no} of "
-                f"{MAX_REWORK_ATTEMPTS} attempts and must move to "
-                f"{TaskState.BLOCKED.value!r} for human decision"
-            )
-            raise IllegalTransitionError(msg)
-        task.attempt_no += 1
+    # The rework budget is *not* enforced here. D11 is owned solely by the
+    # rework controller, which records an append-only attempt row per loop; that
+    # row set is the single authority. Guarding here as well produced two
+    # counters for one budget that disagreed at the boundary.
 
     task.state = proposed
     session.flush()
