@@ -7,6 +7,12 @@ autogenerate and to the schema tests.
 
 from adw.models.action import Action, Evidence
 from adw.models.anchor import ANCHOR_HEAD_ID, AnchorHead, AnchorRecord
+from adw.models.artifact import (
+    Artifact,
+    ArtifactDefinition,
+    ArtifactDefinitionVersion,
+    ArtifactVersion,
+)
 from adw.models.audit import (
     EVENT_TIME_ANOMALY,
     PLATFORM_TENANT_ID,
@@ -34,6 +40,10 @@ __all__ = [
     "AgentDefinitionVersion",
     "AnchorHead",
     "AnchorRecord",
+    "Artifact",
+    "ArtifactDefinition",
+    "ArtifactDefinitionVersion",
+    "ArtifactVersion",
     "AuditChainHead",
     "AuditChainRecord",
     "Base",
@@ -56,6 +66,8 @@ TENANT_SCOPED_TABLES = frozenset(
         "chain_head",
         "action",
         "evidence",
+        "artifact",
+        "artifact_version",
     }
 )
 """Tables that must carry row-level security.
@@ -65,6 +77,13 @@ TENANT_SCOPED_TABLES = frozenset(
 """
 
 PLATFORM_SCOPED_TABLES = frozenset(
-    {"agent_definition", "agent_definition_version", "skill", "skill_version"}
+    {
+        "agent_definition",
+        "agent_definition_version",
+        "skill",
+        "skill_version",
+        "artifact_definition",
+        "artifact_definition_version",
+    }
 )
 """Definition tables. Platform-curated, no tenant data, outside tenant scope per D30."""
