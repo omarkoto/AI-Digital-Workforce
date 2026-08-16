@@ -11,6 +11,10 @@ dependencies = [
     "sqlalchemy>=2.0.36,<2.1",
     "psycopg[binary]>=3.2,<4",
     "alembic>=1.14,<2",
+    # RFC 8785 JSON Canonicalization (D23). Trail of Bits, Apache-2.0, pure
+    # Python, no transitive dependencies, ships py.typed. Deliberately not
+    # implemented in-house: this sits directly under the audit chain.
+    "rfc8785>=0.1.4,<0.2",
 ]
 
 [project.optional-dependencies]
