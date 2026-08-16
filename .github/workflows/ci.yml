@@ -44,19 +44,27 @@ jobs:
       postgres:
         image: postgres:18
         env:
-          POSTGRES_USER: adw_owner
-          POSTGRES_PASSWORD: adw_ci_password
-          POSTGRES_DB: adw_test
+          # The container superuser. The project roles are created below as
+          # non-superusers, because RLS does not apply to a superuser and CI
+          # would otherwise prove nothing.
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_admin_password
+          POSTGRES_DB: postgres
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U adw_owner"
+          --health-cmd "pg_isready -U postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
       ADW_APP_ENV: test
-      ADW_DATABASE_URL: postgresql+psycopg://adw_owner:adw_ci_password@localhost:5432/adw_test
-      ADW_TEST_DATABASE_URL: postgresql+psycopg://adw_owner:adw_ci_password@localhost:5432/adw_test
+      ADW_DATABASE_URL: postgresql+psycopg://adw_app:ci_app_password@localhost:5432/adw_dev
+      ADW_MIGRATION_DATABASE_URL: postgresql+psycopg://adw_owner:ci_owner_password@localhost:5432/adw_dev
+      # PYTEST_, not ADW_: Settings forbids unknown keys, so test-harness
+      # variables stay outside the application's namespace.
+      PYTEST_DATABASE_URL: postgresql+psycopg://adw_owner:ci_owner_password@localhost:5432/adw_dev
+      PYTEST_ANCHOR_DATABASE_URL: postgresql+psycopg://adw_anchor:ci_anchor_password@localhost:5432/adw_dev
+      PYTEST_AUDITOR_DATABASE_URL: postgresql+psycopg://adw_auditor:ci_auditor_password@localhost:5432/adw_dev
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -67,7 +75,28 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Unit and integration tests
+      - name: Bootstrap database and roles
+        env:
+          PGPASSWORD: ci_admin_password
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE adw_owner    WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD 'ci_owner_password';
+          CREATE ROLE adw_app      WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD 'ci_app_password';
+          CREATE ROLE adw_anchor   WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD 'ci_anchor_password';
+          CREATE ROLE adw_auditor  WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD 'ci_auditor_password';
+          CREATE DATABASE adw_dev WITH OWNER = adw_owner;
+          SQL
+          psql -h localhost -U postgres -d adw_dev -v ON_ERROR_STOP=1 <<'SQL'
+          REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+          GRANT USAGE, CREATE ON SCHEMA public TO adw_owner;
+          GRANT CONNECT ON DATABASE adw_dev TO adw_app, adw_anchor, adw_auditor;
+          GRANT USAGE ON SCHEMA public TO adw_app, adw_anchor, adw_auditor;
+          ALTER DEFAULT PRIVILEGES FOR ROLE adw_owner IN SCHEMA public
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO adw_app;
+          ALTER DEFAULT PRIVILEGES FOR ROLE adw_owner IN SCHEMA public
+              GRANT USAGE, SELECT ON SEQUENCES TO adw_app;
+          SQL
+      - name: Unit, integration, and tenant-isolation tests
         run: pytest -v
       - name: Alembic can reach the database
         run: alembic current

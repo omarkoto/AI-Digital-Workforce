@@ -80,6 +80,10 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106"]  # hard-coded test credentials are fine in tests
+# The isolation suite composes DDL and DML around a table name that is a module
+# constant, never caller input. Parameter binding is used for every value; only
+# the identifier is interpolated, which SQL has no placeholder for.
+"tests/security/**" = ["S105", "S106", "S608"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -48,11 +48,20 @@ class Settings(BaseSettings):
         description="Deployment environment. Gates development-only adapters.",
     )
     database_url: PostgresDsn = Field(
-        description="SQLAlchemy URL for the dedicated project database.",
+        description=(
+            "Runtime connection, as adw_app: a non-owner role without BYPASSRLS, "
+            "constrained by row-level security on every tenant-owned table (D18)."
+        ),
+    )
+    migration_database_url: PostgresDsn = Field(
+        description=(
+            "Migration connection, as adw_owner. Alembic needs DDL; the application "
+            "must not have it, so the two connections are deliberately separate."
+        ),
     )
     log_level: str = Field(default="INFO")
 
-    @field_validator("database_url")
+    @field_validator("database_url", "migration_database_url")
     @classmethod
     def _require_psycopg_driver(cls, value: PostgresDsn) -> PostgresDsn:
         """Pin the driver explicitly.
@@ -62,7 +71,7 @@ class Settings(BaseSettings):
         accident.
         """
         if value.scheme != "postgresql+psycopg":
-            msg = f"database_url scheme must be 'postgresql+psycopg', got {value.scheme!r}"
+            msg = f"database URL scheme must be 'postgresql+psycopg', got {value.scheme!r}"
             raise ValueError(msg)
         return value
 

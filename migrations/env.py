@@ -2,6 +2,8 @@
 
 The URL comes from application settings, never from ``alembic.ini``, so there is
 exactly one source of database configuration and no credentials in tracked files.
+Specifically it comes from ``migration_database_url`` — the owner connection —
+because RLS policies, grants, and roles are schema, and schema is Alembic's job.
 
 ``target_metadata`` is ``None`` in Task 1 because no models exist yet. Task 4
 introduces the declarative base and sets it here.
@@ -21,7 +23,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", str(get_settings().database_url))
+# Migrations run as adw_owner, never as the runtime role: DDL belongs to
+# migrations, and the application must not hold it (D18/G3).
+config.set_main_option("sqlalchemy.url", str(get_settings().migration_database_url))
 
 target_metadata = None
 
