@@ -20,6 +20,7 @@ import pytest
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 
+from adw.adapters.blobstore_local import LocalBlobStore
 from adw.adapters.keystore_local import LocalKeyStore
 
 PROBE_TABLE = "_rls_probe"
@@ -136,6 +137,18 @@ def dev_keystore(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Lo
     store = LocalKeyStore(tmp_path / "keys.json")
     yield store
     app_config.get_settings.cache_clear()
+
+
+@pytest.fixture
+def dev_blobstore(tmp_path: Path, dev_keystore: LocalKeyStore) -> LocalBlobStore:
+    """A throwaway blob store. Development-only by construction.
+
+    Depends on ``dev_keystore`` so the dev environment is already established —
+    both adapters refuse to start outside it.
+    """
+    from adw.adapters.blobstore_local import LocalBlobStore as _LocalBlobStore
+
+    return _LocalBlobStore(tmp_path / "blobs")
 
 
 @pytest.fixture
