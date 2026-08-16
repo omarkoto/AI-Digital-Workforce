@@ -36,6 +36,10 @@ class ChainIntegrityError(DomainError):
     """
 
 
+class IllegalTransitionError(DomainError):
+    """A state transition was requested that the machine does not allow."""
+
+
 class TransitionsNotAvailableError(DomainError):
     """A state transition was requested before the rules exist.
 

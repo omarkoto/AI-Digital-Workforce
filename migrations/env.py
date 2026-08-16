@@ -5,8 +5,8 @@ exactly one source of database configuration and no credentials in tracked files
 Specifically it comes from ``migration_database_url`` — the owner connection —
 because RLS policies, grants, and roles are schema, and schema is Alembic's job.
 
-``target_metadata`` is ``None`` in Task 1 because no models exist yet. Task 4
-introduces the declarative base and sets it here.
+``target_metadata`` points at the declarative base, so autogenerate and the
+schema tests see every model registered in :mod:`adw.models`.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from adw.config import get_settings
+from adw.models import Base
 
 config = context.config
 
@@ -27,7 +28,7 @@ if config.config_file_name is not None:
 # migrations, and the application must not hold it (D18/G3).
 config.set_main_option("sqlalchemy.url", str(get_settings().migration_database_url))
 
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:

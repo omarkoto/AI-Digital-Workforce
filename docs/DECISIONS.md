@@ -867,6 +867,31 @@ recorded so nobody reaches for canonicalization when the need appears.
 
 ---
 
+## D30 · Platform-curated definitions are not tenant-scoped
+
+**Decision.** Definition tables — agent definitions, skills, and later artifact and
+gate definitions, together with their version rows — carry no `tenant_id` and are
+readable by every tenant. Invariant I13 is amended from "exactly two" to name them
+as a third structure outside tenant scope.
+
+**Why.** D5 makes MVP departments platform-curated, so a definition is platform
+content rather than tenant content. There is no tenant boundary to cross, because
+no tenant owns the row. Replicating identical definitions per tenant would create
+a boundary that exists only to be crossed, and would make D9's version pinning
+ambiguous across copies.
+
+**Affects.** Schema for every definition table · the RLS policy-coverage test,
+which must exempt them explicitly rather than by accident · Task 4 onward.
+
+**Remains open.** When D5's tenant-authored departments arrive post-MVP, definitions
+become partly tenant-owned and this decision needs revisiting — a tenant-authored
+definition is tenant content and must be scoped.
+
+**Reversibility: Medium.** Adding `tenant_id` later means backfilling and
+re-pinning every historical reference.
+
+---
+
 ## Cross-decision tensions
 
 These arise from the decisions interacting, not from any single one. Architecture must resolve them

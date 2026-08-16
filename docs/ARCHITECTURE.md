@@ -78,7 +78,7 @@ preserve them.
 | I10 | Success is never displayed or recorded without linked evidence. | `CLAUDE.md` §3 |
 | I11 | The chain sequence number, not the timestamp, is the authoritative order of events. | D21 |
 | I12 | A chain record's hash covers the ciphertext digest and metadata, never plaintext, so verification survives key destruction. | D1, D20 |
-| I13 | Exactly two structures may be read across tenants, both carrying identifiers and hashes only, never business content: the dispatch queue and the chain-head read used for anchoring. Everything else is tenant-scoped without exception. | D17, D18, D20 |
+| I13 | Three structures sit outside tenant scope: the dispatch queue and the chain-head read used for anchoring, both carrying identifiers and hashes only and never business content; and the platform-curated definition tables, which hold no tenant data at all. Every other table is tenant-scoped without exception. | D17, D18, D20, D30 |
 
 ## 4. Process and deployment view
 

@@ -1,17 +1,9 @@
-"""Legal state transitions — NOT IMPLEMENTED, and deliberately so.
+"""Legal state transitions.
 
-This module is a placeholder. It defines no transition tables because the
-documents do not yet contain enough to derive them, and inventing the missing
-rules here would smuggle product decisions into code.
-
-`CLAUDE.md` §6 requires workflows to be declared state machines with enumerated
-states and legal transitions. The states exist — see :mod:`adw.domain.states`.
-The transitions do not, for the reasons below.
-
-What *is* fully specified, and can be implemented the moment this module is
-unblocked: the **Task** machine, in ARCHITECTURE.md §5.8.
-
-What is blocked, with the gap in each case:
+**One machine is implemented: Task.** It is the only one the documents specify
+completely (ARCHITECTURE.md §5.8). The other four remain deliberately absent,
+because deriving them would mean inventing the missing rules rather than reading
+them.
 
 Execution
     The happy path is documented as a chain (plan §8) and corroborated by the
@@ -36,44 +28,97 @@ Approval
     ``pending -> approved | rejected | expired`` is documented. D7 then states
     that expiry "must never auto-approve, auto-reject, or silently proceed" and
     "requires explicit human action" — which makes ``expired`` provably
-    non-terminal while naming no exit. The documents define what expiry must not
-    do and never define what it may do.
+    non-terminal while naming no exit.
 
 Rework
     No document enumerates Rework states at all. `CLAUDE.md` §6 lists Rework
     among the state machines, while PHASE-1-IMPLEMENTATION-PLAN §17 models a
-    Rework Attempt as an append-only record with no state field, and DESIGN.md
-    §12.1 renders it as a counter ("Rework 2 of 3"). Both readings are
-    consistent with what is written; choosing between them is a product
-    decision, not an implementation detail.
+    Rework Attempt as an append-only record with no state field.
 
-Until those are resolved, this module exports nothing that could be mistaken for
-a rule. Anything reaching for a transition check gets an explicit, named
-failure rather than a permissive default.
+Anything reaching for one of those four gets an explicit, named failure rather
+than a permissive default.
 """
 
 from __future__ import annotations
 
-from typing import Never
+from collections.abc import Mapping
+from typing import Final, Never
 
-from adw.domain.errors import TransitionsNotAvailableError
+from adw.domain.errors import IllegalTransitionError, TransitionsNotAvailableError
+from adw.domain.states import TaskState
 
-__all__ = ["assert_transition_allowed"]
+__all__ = [
+    "TASK_TRANSITIONS",
+    "assert_task_transition",
+    "assert_transition_allowed",
+    "is_task_transition_allowed",
+    "task_terminal_states",
+]
+
+
+TASK_TRANSITIONS: Final[Mapping[TaskState, frozenset[TaskState]]] = {
+    TaskState.PLANNED: frozenset({TaskState.QUEUED}),
+    TaskState.QUEUED: frozenset({TaskState.RUNNING}),
+    TaskState.RUNNING: frozenset({TaskState.PRODUCING, TaskState.FAILED}),
+    TaskState.PRODUCING: frozenset({TaskState.AWAITING_GATE}),
+    TaskState.AWAITING_GATE: frozenset({TaskState.PASSED, TaskState.REWORKING}),
+    # Which of the two a reworking task takes is decided by the attempt count,
+    # not by the machine: D11 caps rework at three attempts, and that guard is a
+    # service-level condition rather than a separate edge.
+    TaskState.REWORKING: frozenset({TaskState.QUEUED, TaskState.BLOCKED}),
+    TaskState.FAILED: frozenset({TaskState.BLOCKED}),
+    TaskState.BLOCKED: frozenset({TaskState.QUEUED}),
+    TaskState.PASSED: frozenset(),
+}
+"""The complete Task machine from ARCHITECTURE.md §5.8.
+
+Every state appears as a key, so a state with no outgoing edges is recorded as
+an explicit empty set rather than by omission. A missing key would be
+indistinguishable from an oversight.
+"""
+
+
+def task_terminal_states() -> frozenset[TaskState]:
+    """Return the Task states from which no transition is legal."""
+    return frozenset(state for state, allowed in TASK_TRANSITIONS.items() if not allowed)
+
+
+def is_task_transition_allowed(current: TaskState, proposed: TaskState) -> bool:
+    """Return whether ``current -> proposed`` is a legal Task transition."""
+    return proposed in TASK_TRANSITIONS[current]
+
+
+def assert_task_transition(current: TaskState, proposed: TaskState) -> None:
+    """Raise unless ``current -> proposed`` is a legal Task transition.
+
+    Raises:
+        IllegalTransitionError: naming both states, so the failure is diagnosable
+            from the message alone.
+    """
+    if not is_task_transition_allowed(current, proposed):
+        allowed = sorted(state.value for state in TASK_TRANSITIONS[current])
+        msg = (
+            f"illegal task transition {current.value!r} -> {proposed.value!r}; "
+            f"allowed from {current.value!r}: {allowed or 'none (terminal)'}"
+        )
+        raise IllegalTransitionError(msg)
 
 
 def assert_transition_allowed(current: object, proposed: object) -> Never:
-    """Always raise. Transition rules do not exist yet.
+    """Always raise. Rules for Execution, Action, Approval, and Rework do not exist.
 
-    Present so that a caller written against this interface fails loudly and
-    traceably, rather than silently permitting a transition that no document
+    Task transitions have their own entry point, :func:`assert_task_transition`.
+    This one stays deliberately unusable so that a caller for any other machine
+    fails loudly rather than silently permitting a transition no document
     authorises.
 
     Raises:
         TransitionsNotAvailableError: always.
     """
     msg = (
-        "state transition rules are not implemented: the legal transitions for "
-        "Execution, Action, Approval, and Rework contain unresolved product "
-        "decisions. See the module docstring for the specific gaps."
+        "state transition rules are not implemented for this machine: the legal "
+        "transitions for Execution, Action, Approval, and Rework contain "
+        "unresolved product decisions. See the module docstring for the specific "
+        "gaps. Task transitions are available via assert_task_transition()."
     )
     raise TransitionsNotAvailableError(msg)

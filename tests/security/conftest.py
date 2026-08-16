@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -90,3 +91,86 @@ def probe_table(owner_engine: Engine) -> Iterator[str]:
 
     with owner_engine.begin() as connection:
         connection.execute(text(f"DROP TABLE IF EXISTS {PROBE_TABLE}"))
+
+
+@pytest.fixture
+def seeded_schema(owner_engine: Engine) -> Iterator[None]:
+    """Apply the migration and seed two tenants with one execution and task each.
+
+    Seeding runs as the owner under each tenant's own context, because FORCE
+    ROW LEVEL SECURITY applies to the owner too — there is no privileged writer.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    root = Path(__file__).resolve().parents[2]
+    alembic_config = Config(str(root / "alembic.ini"))
+    alembic_config.set_main_option("script_location", str(root / "migrations"))
+
+    command.upgrade(alembic_config, "head")
+
+    agent_version_id, skill_version_id = uuid4(), uuid4()
+    with owner_engine.begin() as connection:
+        agent_id, skill_id = uuid4(), uuid4()
+        connection.execute(
+            text("INSERT INTO agent_definition (id, key, name) VALUES (:i, :k, :n)"),
+            {"i": agent_id, "k": "data-preparation", "n": "Data Preparation"},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO agent_definition_version "
+                "(id, agent_definition_id, version_no, instructions) VALUES (:i, :d, 1, :x)"
+            ),
+            {"i": agent_version_id, "d": agent_id, "x": "normalize the source workbook"},
+        )
+        connection.execute(
+            text("INSERT INTO skill (id, key, name) VALUES (:i, :k, :n)"),
+            {"i": skill_id, "k": "financial-normalization", "n": "Financial normalization"},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO skill_version (id, skill_id, version_no, content) "
+                "VALUES (:i, :s, 1, :c)"
+            ),
+            {"i": skill_version_id, "s": skill_id, "c": "how to normalize actuals"},
+        )
+
+    for tenant, slug, requester in (
+        (TENANT_A, "northwind", "amira@northwind"),
+        (TENANT_B, "contoso", "lena@contoso"),
+    ):
+        with owner_engine.begin() as connection:
+            connection.execute(
+                text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": str(tenant)}
+            )
+            connection.execute(
+                text("INSERT INTO tenant (id, slug, name) VALUES (:i, :s, :n)"),
+                {"i": tenant, "s": slug, "n": slug.title()},
+            )
+            execution_id, task_id = uuid4(), uuid4()
+            connection.execute(
+                text(
+                    "INSERT INTO execution (id, tenant_id, requester_identity, state) "
+                    "VALUES (:i, :t, :r, 'draft')"
+                ),
+                {"i": execution_id, "t": tenant, "r": requester},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO task (id, tenant_id, execution_id, sequence, "
+                    "agent_definition_version_id, state, attempt_no) "
+                    "VALUES (:i, :t, :e, 1, :v, 'planned', 1)"
+                ),
+                {"i": task_id, "t": tenant, "e": execution_id, "v": agent_version_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO task_skill_pin (id, tenant_id, task_id, skill_version_id) "
+                    "VALUES (:i, :t, :k, :s)"
+                ),
+                {"i": uuid4(), "t": tenant, "k": task_id, "s": skill_version_id},
+            )
+
+    yield
+
+    command.downgrade(alembic_config, "base")
