@@ -32,12 +32,21 @@ from typing import Final
 REDACTED: Final = "[REDACTED]"
 
 SENSITIVE_KEY_PATTERN: Final = re.compile(
-    r"(password|passwd|secret|token|api[-_]?key|access[-_]?key|private[-_]?key"
+    r"(password|passwd|secret|token(?!s\b)|api[-_]?key|access[-_]?key|private[-_]?key"
     r"|credential|authorization|auth[-_]?header|connection[-_]?string|dsn"
     r"|session[-_]?id|cookie|bearer)",
     re.IGNORECASE,
 )
-"""Key names whose values are replaced whatever they contain."""
+"""Key names whose values are replaced whatever they contain.
+
+``token(?!s\\b)`` is deliberate. The singular is a credential — ``token``,
+``access_token``, ``refresh_token`` all still match. The plural is a **count**:
+``prompt_tokens``, ``completion_tokens``, ``max_output_tokens``. Redacting those
+destroyed the cost-accounting evidence that `PRODUCT.md` §25 requires per action,
+which is a precision failure, not caution — the docstring above states that
+over-redaction silently corrupts a record, and this was an instance of it.
+Backstops for a plural key that really did hold a credential are unchanged: the
+value-shape patterns still run, and everything is encrypted at rest (D1)."""
 
 VALUE_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     ("bearer_token", re.compile(r"\bBearer\s+[A-Za-z0-9\-._~+/]{16,}=*", re.IGNORECASE)),

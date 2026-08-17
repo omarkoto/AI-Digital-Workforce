@@ -117,6 +117,26 @@ def test_precision_ordinary_financial_content_survives(value: dict[str, str]) ->
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "key", ["prompt_tokens", "completion_tokens", "total_tokens", "max_output_tokens"]
+)
+def test_precision_token_counts_are_not_credentials(key: str) -> None:
+    """A plural ``tokens`` key is a count, not a secret.
+
+    Redacting these destroyed the per-action cost evidence `PRODUCT.md` §25
+    requires, which is over-redaction of exactly the kind this module's docstring
+    warns about.
+    """
+    assert redact({key: 4096}).value == {key: 4096}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("key", ["token", "access_token", "refresh_token", "TOKEN"])
+def test_the_singular_token_is_still_a_credential(key: str) -> None:
+    assert redact({key: "abc"}).value == {key: REDACTED}
+
+
+@pytest.mark.unit
 def test_lists_and_scalars_are_handled() -> None:
     assert redact([1, "two", None]).value == [1, "two", None]
     assert redact(7).value == 7
