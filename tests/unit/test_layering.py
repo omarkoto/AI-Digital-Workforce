@@ -53,6 +53,32 @@ def test_services_do_not_import_the_api_layer() -> None:
 
 
 @pytest.mark.unit
+def test_ports_depend_on_no_adapter() -> None:
+    """A port that knows its adapters is not a boundary."""
+    for module in _modules_under("ports"):
+        for imported in _imports(module):
+            assert not imported.startswith("adw.adapters"), (
+                f"{module.relative_to(SRC)} imports {imported!r}; a port must not know an adapter"
+            )
+
+
+@pytest.mark.unit
+def test_the_runtime_depends_on_the_llm_port_and_never_on_a_provider() -> None:
+    """D8: swapping providers, or running the suite on the fake, must not touch
+    the runtime. An import here is how that guarantee would quietly disappear."""
+    for module in _modules_under("runtime"):
+        for imported in _imports(module):
+            assert not imported.startswith("adw.adapters"), (
+                f"{module.relative_to(SRC)} imports {imported!r}; "
+                "the Agent Runtime may depend only on adw.ports.llm"
+            )
+        assert "httpx" not in _imports(module), (
+            f"{module.relative_to(SRC)} imports an HTTP client; "
+            "transport belongs to an adapter, not the runtime"
+        )
+
+
+@pytest.mark.unit
 def test_no_production_module_imports_stubs() -> None:
     """Phase 1 stubs must never be reachable from a production path."""
     for module in SRC.rglob("*.py"):
