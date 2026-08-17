@@ -13,7 +13,7 @@ from __future__ import annotations
 from enum import StrEnum
 from functools import lru_cache
 
-from pydantic import Field, PostgresDsn, field_validator
+from pydantic import Field, PostgresDsn, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -60,6 +60,36 @@ class Settings(BaseSettings):
         ),
     )
     log_level: str = Field(default="INFO")
+
+    # --- LLM provider (D8) --------------------------------------------------
+    # One provider behind the port. Nothing here is required to start the
+    # application: the deterministic fake needs none of it, which is what keeps
+    # the whole test suite runnable with no credential and no network.
+    ollama_base_url: str = Field(
+        default="https://ollama.com",
+        description="Ollama Cloud API root. Configurable so a proxy or a test double can stand in.",
+    )
+    ollama_model: str | None = Field(
+        default=None,
+        description=(
+            "Cloud model to use, e.g. from https://ollama.com/search?c=cloud. Deliberately has "
+            "no default: a hard-coded model would make a vendor's catalogue into our migration."
+        ),
+    )
+    ollama_api_key: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Created at https://ollama.com/settings/keys. A SecretStr, so it never appears in "
+            "a repr, a log line, or a traceback."
+        ),
+    )
+    ollama_timeout_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        description=(
+            "Per-request budget. A model call is a tool call and gets a timeout like any other."
+        ),
+    )
 
     @field_validator("database_url", "migration_database_url")
     @classmethod

@@ -19,13 +19,16 @@ dependencies = [
     # ciphertext and hashes its digest, never plaintext (I12), so a tenant key
     # can be destroyed without making the chain unverifiable.
     "cryptography>=44,<47",
+    # HTTP client for the Ollama Cloud provider (D8). Runtime, not dev-only:
+    # the real provider adapter imports it. Chosen for an explicit, mandatory
+    # timeout on every request — CLAUDE.md §4 requires one on every tool call.
+    "httpx>=0.28,<0.29",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3,<9",
     "pytest-cov>=6.0,<8",
-    "httpx>=0.28,<0.29",
     "mypy>=1.13,<2",
     "ruff>=0.8,<0.15",
     "pip-audit>=2.7,<3",
@@ -106,4 +109,5 @@ markers = [
     "integration: requires a live PostgreSQL database",
     "security: isolation, privilege, and redaction guarantees",
     "scenario: end-to-end execution record proof",
+    "external: requires network access and real provider credentials; never runs in CI",
 ]
