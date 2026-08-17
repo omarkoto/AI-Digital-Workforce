@@ -10,6 +10,7 @@ can never diverge: either both are durable or neither happened. The caller's
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import select
@@ -17,11 +18,75 @@ from sqlalchemy.orm import Session
 
 from adw.domain.states import TaskState
 from adw.domain.transitions import assert_task_transition
-from adw.models.task import Task
+from adw.models.definition import AgentDefinitionVersion, SkillVersion
+from adw.models.task import Task, TaskSkillPin
 from adw.ports.keystore import KeyStore
 from adw.services import audit_writer
 
 EVENT_TASK_TRANSITIONED = "task.transitioned"
+EVENT_TASK_CREATED = "task.created"
+
+
+def create_task(
+    session: Session,
+    *,
+    tenant_id: UUID,
+    execution_id: UUID,
+    sequence: int,
+    agent_version: AgentDefinitionVersion,
+    skill_versions: Sequence[SkillVersion] = (),
+    keystore: KeyStore,
+    actor_id: str,
+) -> Task:
+    """Create a task with its definition versions pinned (D9/I4).
+
+    Pinning happens here and nowhere else, at creation and once. A task that
+    picked up "the current instructions" at run time could never answer what its
+    instructions *were*, which is the question the whole record exists to answer.
+    The pins are real foreign keys, so the database refuses to drop a version an
+    execution relied on.
+
+    The audit record names the pinned versions, so the reconstruction in
+    :mod:`adw.verification.reconstructor` can report which rules governed the
+    task without joining through mutable state.
+    """
+    task = Task(
+        tenant_id=tenant_id,
+        execution_id=execution_id,
+        sequence=sequence,
+        agent_definition_version_id=agent_version.id,
+        state=TaskState.PLANNED,
+        attempt_no=1,
+    )
+    session.add(task)
+    session.flush()
+
+    for skill_version in skill_versions:
+        session.add(
+            TaskSkillPin(
+                tenant_id=tenant_id,
+                task_id=task.id,
+                skill_version_id=skill_version.id,
+            )
+        )
+    session.flush()
+
+    audit_writer.append(
+        session,
+        tenant_id=tenant_id,
+        event_type=EVENT_TASK_CREATED,
+        actor_id=actor_id,
+        payload={
+            "task_id": str(task.id),
+            "execution_id": str(execution_id),
+            "sequence": sequence,
+            "agent_definition_version_id": str(agent_version.id),
+            "agent_definition_version_no": agent_version.version_no,
+            "skill_version_ids": [str(version.id) for version in skill_versions],
+        },
+        keystore=keystore,
+    )
+    return task
 
 
 def get_task(session: Session, task_id: UUID) -> Task | None:
