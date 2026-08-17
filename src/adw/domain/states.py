@@ -68,6 +68,20 @@ class ApprovalState(StrEnum):
     EXPIRED = "expired"
 
 
+class JobState(StrEnum):
+    """A unit of queued work. D17.
+
+    Dispatch state only — it says nothing about the business outcome, which lives
+    in the execution record. A ``done`` job may well have recorded a failed
+    action; the two are different questions.
+    """
+
+    READY = "ready"
+    CLAIMED = "claimed"
+    DONE = "done"
+    FAILED = "failed"
+
+
 class GateVerdict(StrEnum):
     """The outcome of a Control Gate. DESIGN.md §11.5."""
 

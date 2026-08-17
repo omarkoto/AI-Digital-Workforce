@@ -34,6 +34,7 @@ from adw.models.gate import (
     GateDefinitionVersion,
     ReworkAttempt,
 )
+from adw.models.queue import QUEUE_COLUMNS, DispatchJob, JobExecution
 from adw.models.task import MAX_ATTEMPTS, Task, TaskSkillPin
 from adw.models.tenant import Tenant
 
@@ -42,6 +43,7 @@ __all__ = [
     "EVENT_TIME_ANOMALY",
     "MAX_ATTEMPTS",
     "PLATFORM_TENANT_ID",
+    "QUEUE_COLUMNS",
     "Action",
     "AgentDefinition",
     "AgentDefinitionVersion",
@@ -55,11 +57,13 @@ __all__ = [
     "AuditChainHead",
     "AuditChainRecord",
     "Base",
+    "DispatchJob",
     "Evidence",
     "Execution",
     "GateDecision",
     "GateDefinition",
     "GateDefinitionVersion",
+    "JobExecution",
     "ReworkAttempt",
     "Skill",
     "SkillVersion",
