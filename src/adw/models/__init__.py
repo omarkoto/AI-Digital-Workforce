@@ -24,6 +24,8 @@ from adw.models.cost import ActionCost, ExecutionBudget
 from adw.models.definition import (
     AgentDefinition,
     AgentDefinitionVersion,
+    DefinitionDeprecation,
+    DefinitionKind,
     Skill,
     SkillVersion,
 )
@@ -59,6 +61,8 @@ __all__ = [
     "AuditChainHead",
     "AuditChainRecord",
     "Base",
+    "DefinitionDeprecation",
+    "DefinitionKind",
     "DispatchJob",
     "Evidence",
     "Execution",
@@ -110,6 +114,7 @@ PLATFORM_SCOPED_TABLES = frozenset(
         "artifact_definition_version",
         "gate_definition",
         "gate_definition_version",
+        "definition_deprecation",
     }
 )
 """Definition tables. Platform-curated, no tenant data, outside tenant scope per D30."""

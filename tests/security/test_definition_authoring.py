@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from adw.adapters.keystore_local import LocalKeyStore
 from adw.domain.states import TaskState
-from adw.models.definition import AgentDefinitionVersion, SkillVersion
+from adw.models.definition import AgentDefinitionVersion, DefinitionKind
 from adw.models.task import Task, TaskSkillPin
 from adw.services import definition_service, task_service
 from adw.services.definition_service import (
@@ -193,30 +193,29 @@ def test_resolution_returns_the_highest_version(authored: Session) -> None:
 def test_resolution_skips_a_deprecated_version(authored: Session) -> None:
     """Deprecation retires a version from *new* pins without stranding old ones."""
     definition_service.publish_agent_version(authored, key=AGENT_KEY, instructions="v2")
-    # Set at insert time: the immutability trigger blocks UPDATE on this table
-    # for every role, so deprecation cannot currently be applied after the fact.
-    # See the finding reported with this task.
-    authored.add(
-        AgentDefinitionVersion(
-            agent_definition_id=definition_service.resolve_agent_version(
-                authored, key=AGENT_KEY
-            ).agent_definition_id,
-            version_no=3,
-            instructions="retired",
-            is_deprecated=True,
-        )
+    third = definition_service.publish_agent_version(
+        authored, key=AGENT_KEY, instructions="retired"
     )
-    authored.flush()
+    definition_service.deprecate(
+        authored,
+        kind=DefinitionKind.AGENT_DEFINITION,
+        version_id=third.id,
+        deprecated_by_identity="lena@platform",
+        reason="cited a figure format the gate rejects",
+    )
     assert definition_service.resolve_agent_version(authored, key=AGENT_KEY).version_no == 2
 
 
 def test_an_exact_version_resolves_even_when_deprecated(authored: Session) -> None:
     """Reproducing a past execution must survive the retirement of its rules."""
-    skill = definition_service.resolve_skill_version(authored, key=SKILL_KEY)
-    authored.add(
-        SkillVersion(skill_id=skill.skill_id, version_no=2, content="retired", is_deprecated=True)
+    second = definition_service.publish_skill_version(authored, key=SKILL_KEY, content="retired")
+    definition_service.deprecate(
+        authored,
+        kind=DefinitionKind.SKILL,
+        version_id=second.id,
+        deprecated_by_identity="lena@platform",
+        reason="superseded by a clearer wording",
     )
-    authored.flush()
     exact = definition_service.resolve_skill_version(authored, key=SKILL_KEY, version_no=2)
     assert exact.content == "retired"
     assert definition_service.resolve_skill_version(authored, key=SKILL_KEY).version_no == 1

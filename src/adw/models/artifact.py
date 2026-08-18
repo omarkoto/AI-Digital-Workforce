@@ -71,8 +71,6 @@ class ArtifactDefinitionVersion(Base, CreatedAtMixin):
     schema_json: Mapped[str] = mapped_column(nullable=False)
     """The contract, as canonical JSON. Declarative: the Gate Engine reads it."""
 
-    is_deprecated: Mapped[bool] = mapped_column(default=False, nullable=False)
-
     definition: Mapped[ArtifactDefinition] = relationship(back_populates="versions")
 
 

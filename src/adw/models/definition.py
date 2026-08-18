@@ -17,9 +17,10 @@ longer answer what the rules were at the time.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -60,9 +61,9 @@ class AgentDefinitionVersion(Base, CreatedAtMixin):
     identity, never version numbers, which must stay legible as v1, v2, v3."""
 
     instructions: Mapped[str] = mapped_column(nullable=False)
-    is_deprecated: Mapped[bool] = mapped_column(default=False, nullable=False)
-    """Deprecation is the only lifecycle a referenced version has. Deleting one
-    would strand every execution that pinned it."""
+    """The whole of the row's mutable surface: none. Deprecation — the only
+    lifecycle a referenced version has (D9) — is a row in
+    :class:`DefinitionDeprecation`, not a column here."""
 
     definition: Mapped[AgentDefinition] = relationship(back_populates="versions")
 
@@ -101,6 +102,104 @@ class SkillVersion(Base, CreatedAtMixin):
     )
     version_no: Mapped[int] = mapped_column(nullable=False)
     content: Mapped[str] = mapped_column(nullable=False)
-    is_deprecated: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     skill: Mapped[Skill] = relationship(back_populates="versions")
+
+
+class DefinitionKind(StrEnum):
+    """Which sort of definition version a deprecation refers to."""
+
+    AGENT_DEFINITION = "agent_definition_version"
+    SKILL = "skill_version"
+    ARTIFACT_DEFINITION = "artifact_definition_version"
+    GATE_DEFINITION = "gate_definition_version"
+
+
+class DefinitionDeprecation(Base, CreatedAtMixin):
+    """A definition version retired from new use — D9.
+
+    D9 permits exactly one lifecycle event on a pinned version: deprecation.
+    This is that event, recorded rather than flagged, because deprecation is an
+    **act with an actor, a time, and a reason** and a boolean carries none of
+    them. The version row itself stays byte-immutable, which is the guarantee
+    worth keeping absolute: no UPDATE on a version table, by any role, ever.
+
+    Append-only by trigger, and platform-scoped like the definitions it refers
+    to (D30/I13) — a platform-curated act has no tenant whose chain it belongs
+    in, so this row *is* the audit record.
+
+    **Deprecation retires a version from new pins. It never touches old ones.**
+    An execution that pinned v1 keeps v1, keeps reading it, and keeps
+    reconstructing from it, which is the whole reason a version can be retired
+    but never deleted.
+    """
+
+    __tablename__ = "definition_deprecation"
+
+    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=new_id)
+
+    agent_definition_version_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("agent_definition_version.id", ondelete="RESTRICT"),
+        nullable=True,
+        unique=True,
+    )
+    skill_version_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("skill_version.id", ondelete="RESTRICT"),
+        nullable=True,
+        unique=True,
+    )
+    artifact_definition_version_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("artifact_definition_version.id", ondelete="RESTRICT"),
+        nullable=True,
+        unique=True,
+    )
+    gate_definition_version_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("gate_definition_version.id", ondelete="RESTRICT"),
+        nullable=True,
+        unique=True,
+    )
+    """Four real foreign keys rather than a kind-plus-id pair, so the database
+    refuses a deprecation of a version that does not exist. Exactly one is set;
+    ``RESTRICT`` because a deprecated version must outlive its retirement."""
+
+    deprecated_by_identity: Mapped[str] = mapped_column(nullable=False)
+    reason: Mapped[str] = mapped_column(nullable=False)
+    """Required, not optional. "Why is this retired?" is the question an operator
+    asks six months later, and a nullable column is how it goes unanswered."""
+
+    __table_args__ = (
+        CheckConstraint(
+            "num_nonnulls(agent_definition_version_id, skill_version_id, "
+            "artifact_definition_version_id, gate_definition_version_id) = 1",
+            name="names_exactly_one_version",
+        ),
+    )
+
+    @property
+    def kind(self) -> DefinitionKind:
+        """Which sort of version this retires."""
+        if self.agent_definition_version_id is not None:
+            return DefinitionKind.AGENT_DEFINITION
+        if self.skill_version_id is not None:
+            return DefinitionKind.SKILL
+        if self.artifact_definition_version_id is not None:
+            return DefinitionKind.ARTIFACT_DEFINITION
+        return DefinitionKind.GATE_DEFINITION
+
+    @property
+    def subject_id(self) -> UUID:
+        """The version this retires, whichever kind it is."""
+        for candidate in (
+            self.agent_definition_version_id,
+            self.skill_version_id,
+            self.artifact_definition_version_id,
+            self.gate_definition_version_id,
+        ):
+            if candidate is not None:
+                return candidate
+        msg = "a deprecation row must name exactly one version"
+        raise ValueError(msg)

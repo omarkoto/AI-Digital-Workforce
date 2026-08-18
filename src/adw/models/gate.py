@@ -86,7 +86,6 @@ class GateDefinitionVersion(Base, CreatedAtMixin):
 
     requires_human: Mapped[bool] = mapped_column(default=False, nullable=False)
     config_json: Mapped[str] = mapped_column(nullable=False, default="{}")
-    is_deprecated: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     definition: Mapped[GateDefinition] = relationship(back_populates="versions")
 
