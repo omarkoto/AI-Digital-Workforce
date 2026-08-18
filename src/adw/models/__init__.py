@@ -37,6 +37,7 @@ from adw.models.gate import (
     GateDefinitionVersion,
     ReworkAttempt,
 )
+from adw.models.grant import DEFAULT_GRANT_TTL_SECONDS, ToolGrant
 from adw.models.queue import QUEUE_COLUMNS, DispatchJob, JobExecution
 from adw.models.task import MAX_ATTEMPTS, Task, TaskSkillPin
 from adw.models.tenant import Tenant
@@ -44,6 +45,7 @@ from adw.models.tool import ToolDefinition, ToolDefinitionVersion
 
 __all__ = [
     "ANCHOR_HEAD_ID",
+    "DEFAULT_GRANT_TTL_SECONDS",
     "EVENT_TIME_ANOMALY",
     "MAX_ATTEMPTS",
     "PLATFORM_TENANT_ID",
@@ -80,6 +82,7 @@ __all__ = [
     "Tenant",
     "ToolDefinition",
     "ToolDefinitionVersion",
+    "ToolGrant",
 ]
 
 TENANT_SCOPED_TABLES = frozenset(
@@ -99,6 +102,7 @@ TENANT_SCOPED_TABLES = frozenset(
         "approval_item",
         "action_cost",
         "execution_budget",
+        "tool_grant",
     }
 )
 """Tables that must carry row-level security.

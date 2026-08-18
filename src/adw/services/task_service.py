@@ -21,7 +21,7 @@ from adw.domain.transitions import assert_task_transition
 from adw.models.definition import AgentDefinitionVersion, SkillVersion
 from adw.models.task import Task, TaskSkillPin
 from adw.ports.keystore import KeyStore
-from adw.services import audit_writer
+from adw.services import audit_writer, grant_service
 
 EVENT_TASK_TRANSITIONED = "task.transitioned"
 EVENT_TASK_CREATED = "task.created"
@@ -35,10 +35,12 @@ def create_task(
     sequence: int,
     agent_version: AgentDefinitionVersion,
     skill_versions: Sequence[SkillVersion] = (),
+    tool_grants: Sequence[grant_service.GrantRequest] = (),
     keystore: KeyStore,
     actor_id: str,
 ) -> Task:
-    """Create a task with its definition versions pinned (D9/I4).
+    """Create a task with its definition versions pinned (D9/I4) and its
+    permission set declared (D10/B3).
 
     Pinning happens here and nowhere else, at creation and once. A task that
     picked up "the current instructions" at run time could never answer what its
@@ -49,6 +51,13 @@ def create_task(
     The audit record names the pinned versions, so the reconstruction in
     :mod:`adw.verification.reconstructor` can report which rules governed the
     task without joining through mutable state.
+
+    ``tool_grants`` is the task's **complete** permission set, and this is the
+    only place one can be declared (B3). Nothing adds a permission to a running
+    task, which is what makes "an agent cannot acquire a capability it did not
+    start with" a property of the code rather than a promise about it. Grants are
+    written in this transaction, so a task's capability and its instructions
+    become durable together or not at all.
     """
     task = Task(
         tenant_id=tenant_id,
@@ -71,6 +80,15 @@ def create_task(
         )
     session.flush()
 
+    grants = grant_service.declare(
+        session,
+        tenant_id=tenant_id,
+        task_id=task.id,
+        requests=tool_grants,
+        keystore=keystore,
+        actor_id=actor_id,
+    )
+
     audit_writer.append(
         session,
         tenant_id=tenant_id,
@@ -83,6 +101,7 @@ def create_task(
             "agent_definition_version_id": str(agent_version.id),
             "agent_definition_version_no": agent_version.version_no,
             "skill_version_ids": [str(version.id) for version in skill_versions],
+            "tool_grant_ids": [str(grant.id) for grant in grants],
         },
         keystore=keystore,
     )
