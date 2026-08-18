@@ -202,7 +202,10 @@ def run_task(
     turns: list[model_call.RecordedCompletion] = []
     refused: list[tool_proposal.ToolProposal] = []
     conversation = list(inputs)
-    sequence = 0
+    # Continue the task's action sequence rather than restarting it. A task that
+    # failed a gate and came back for rework runs this method again, and the
+    # record has to be able to say what happened first.
+    sequence = action_recorder.next_sequence(session, task) - 1
 
     for _ in range(max_turns):
         # Checked before the call, never after. A stop that happens before a

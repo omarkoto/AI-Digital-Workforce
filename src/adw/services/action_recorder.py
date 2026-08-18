@@ -51,6 +51,21 @@ def plan_action(session: Session, *, task: Task, sequence: int, tool_name: str) 
     return action
 
 
+def next_sequence(session: Session, task: Task) -> int:
+    """Return the next action ordinal for ``task``.
+
+    Action sequence is per task and monotonic **across attempts**, not per
+    attempt. A task that fails a gate and comes back for rework keeps counting,
+    because the record has to be able to say what happened first — and restarting
+    at 1 would both collide with the unique constraint and imply the earlier
+    attempt's actions never happened.
+    """
+    highest = session.execute(
+        select(func.max(Action.sequence)).where(Action.task_id == task.id)
+    ).scalar_one_or_none()
+    return int(highest or 0) + 1
+
+
 def has_evidence(session: Session, action: Action) -> bool:
     count = session.execute(
         select(func.count()).select_from(Evidence).where(Evidence.action_id == action.id)
