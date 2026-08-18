@@ -79,6 +79,26 @@ def test_the_runtime_depends_on_the_llm_port_and_never_on_a_provider() -> None:
 
 
 @pytest.mark.unit
+def test_only_the_tool_gateway_resolves_secrets() -> None:
+    """`CLAUDE.md` §4: a secret is resolved at the tool boundary and nowhere else.
+
+    `ARCHITECTURE.md` §13 makes the gateway the only component that touches
+    secrets, so concentrating that capability is only real if nothing else can
+    import the port. The Agent Runtime especially — it is the least-trusted
+    component in the system and must never hold a resolved credential.
+    """
+    permitted = {"secrets.py", "secrets_env.py", "tool_gateway.py"}
+    for module in SRC.rglob("*.py"):
+        if module.name in permitted:
+            continue
+        for imported in _imports(module):
+            assert imported != "adw.ports.secrets", (
+                f"{module.relative_to(SRC)} imports the secret store port; "
+                "only the Tool Gateway may resolve a secret"
+            )
+
+
+@pytest.mark.unit
 def test_no_production_module_imports_stubs() -> None:
     """Phase 1 stubs must never be reachable from a production path."""
     for module in SRC.rglob("*.py"):
