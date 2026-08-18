@@ -20,6 +20,7 @@ from adw.models.audit import (
     AuditChainRecord,
 )
 from adw.models.base import Base
+from adw.models.cost import ActionCost, ExecutionBudget
 from adw.models.definition import (
     AgentDefinition,
     AgentDefinitionVersion,
@@ -45,6 +46,7 @@ __all__ = [
     "PLATFORM_TENANT_ID",
     "QUEUE_COLUMNS",
     "Action",
+    "ActionCost",
     "AgentDefinition",
     "AgentDefinitionVersion",
     "AnchorHead",
@@ -60,6 +62,7 @@ __all__ = [
     "DispatchJob",
     "Evidence",
     "Execution",
+    "ExecutionBudget",
     "GateDecision",
     "GateDefinition",
     "GateDefinitionVersion",
@@ -87,6 +90,8 @@ TENANT_SCOPED_TABLES = frozenset(
         "gate_decision",
         "rework_attempt",
         "approval_item",
+        "action_cost",
+        "execution_budget",
     }
 )
 """Tables that must carry row-level security.

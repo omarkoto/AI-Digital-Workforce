@@ -39,7 +39,7 @@ from adw.ports.keystore import KeyStore
 from adw.ports.llm import LLMProvider
 from adw.runtime import model_call, tool_proposal
 from adw.runtime.context import UntrustedInput, assemble
-from adw.services import action_recorder, audit_writer, evidence_recorder
+from adw.services import action_recorder, audit_writer, cost_service, evidence_recorder
 
 EVENT_TOOL_PROPOSAL_REFUSED = "tool.proposal_refused"
 EVIDENCE_TOOL_PROPOSAL = "llm.tool_proposal"
@@ -67,6 +67,11 @@ class StopReason(StrEnum):
     """The run hit its ceiling. Never presented as success: work stopped short of
     an answer, and saying otherwise would be the claim `CLAUDE.md` §3 forbids."""
 
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    """The execution's token ceiling was reached. The run paused *before* making
+    a call rather than truncating one, so the record says "we stopped" instead of
+    presenting a half-written answer as a whole one (`PRODUCT.md` §25)."""
+
 
 @dataclass(frozen=True, slots=True)
 class AgentRun:
@@ -76,6 +81,8 @@ class AgentRun:
     stop_reason: StopReason
     turns: tuple[model_call.RecordedCompletion, ...] = field(default=())
     refused_proposals: tuple[tool_proposal.ToolProposal, ...] = field(default=())
+    budget: cost_service.BudgetReading | None = None
+    """Spend against the ceiling as of the moment the run ended."""
 
     @property
     def succeeded(self) -> bool:
@@ -198,6 +205,25 @@ def run_task(
     sequence = 0
 
     for _ in range(max_turns):
+        # Checked before the call, never after. A stop that happens before a
+        # request is an honest "we stopped"; one that cuts a response short
+        # leaves an answer that looks complete and is not (`PRODUCT.md` §25).
+        budget = cost_service.check_before_spending(
+            session,
+            tenant_id=task.tenant_id,
+            execution_id=task.execution_id,
+            keystore=keystore,
+            actor_id=actor_id,
+        )
+        if not budget.may_continue:
+            return AgentRun(
+                task=task,
+                stop_reason=StopReason.BUDGET_EXHAUSTED,
+                turns=tuple(turns),
+                refused_proposals=tuple(refused),
+                budget=budget,
+            )
+
         sequence += 1
         outcome = model_call.invoke(
             session,
@@ -224,7 +250,17 @@ def run_task(
                 stop_reason=StopReason.PROVIDER_FAILED,
                 turns=tuple(turns),
                 refused_proposals=tuple(refused),
+                budget=budget,
             )
+
+        # Recorded immediately, so the next turn's check sees this turn's spend.
+        # A budget that only totals up at the end cannot stop anything.
+        cost_service.record_usage(
+            session,
+            action=outcome.action,
+            execution_id=task.execution_id,
+            response=outcome.response,
+        )
 
         content = outcome.response.content
         proposal = tool_proposal.detect(content)
@@ -258,6 +294,7 @@ def run_task(
                 stop_reason=StopReason.EMPTY_COMPLETION,
                 turns=tuple(turns),
                 refused_proposals=tuple(refused),
+                budget=cost_service.read_budget(session, task.execution_id),
             )
 
         return AgentRun(
@@ -265,6 +302,7 @@ def run_task(
             stop_reason=StopReason.COMPLETED,
             turns=tuple(turns),
             refused_proposals=tuple(refused),
+            budget=cost_service.read_budget(session, task.execution_id),
         )
 
     return AgentRun(
@@ -272,4 +310,5 @@ def run_task(
         stop_reason=StopReason.TURN_LIMIT,
         turns=tuple(turns),
         refused_proposals=tuple(refused),
+        budget=cost_service.read_budget(session, task.execution_id),
     )
