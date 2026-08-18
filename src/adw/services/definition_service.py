@@ -30,7 +30,7 @@ from __future__ import annotations
 from typing import Final
 from uuid import UUID
 
-from sqlalchemy import Exists, func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from adw.domain.errors import DomainError
@@ -177,14 +177,19 @@ _LINKS: Final[dict[DefinitionKind, InstrumentedAttribute[UUID | None]]] = {
     DefinitionKind.SKILL: DefinitionDeprecation.skill_version_id,
     DefinitionKind.ARTIFACT_DEFINITION: DefinitionDeprecation.artifact_definition_version_id,
     DefinitionKind.GATE_DEFINITION: DefinitionDeprecation.gate_definition_version_id,
+    DefinitionKind.TOOL: DefinitionDeprecation.tool_definition_version_id,
 }
 
 
-def _deprecated(
-    link: InstrumentedAttribute[UUID | None], version_id: InstrumentedAttribute[UUID]
-) -> Exists:
-    """A correlated EXISTS over the deprecation record for one version kind."""
-    return select(1).where(link == version_id).exists()
+def not_deprecated(
+    kind: DefinitionKind, version_id: InstrumentedAttribute[UUID]
+) -> ColumnElement[bool]:
+    """A predicate excluding retired versions, for use in a resolution query.
+
+    Public because every registry needs it and each writing its own correlated
+    subquery is how two of them end up disagreeing about what "retired" means.
+    """
+    return ~select(1).where(_LINKS[kind] == version_id).exists()
 
 
 def deprecate(
@@ -269,11 +274,7 @@ def resolve_agent_version(
         return version
 
     latest = session.scalar(
-        query.where(
-            ~_deprecated(
-                DefinitionDeprecation.agent_definition_version_id, AgentDefinitionVersion.id
-            )
-        )
+        query.where(not_deprecated(DefinitionKind.AGENT_DEFINITION, AgentDefinitionVersion.id))
         .order_by(AgentDefinitionVersion.version_no.desc())
         .limit(1)
     )
@@ -301,7 +302,7 @@ def resolve_skill_version(
         return version
 
     latest = session.scalar(
-        query.where(~_deprecated(DefinitionDeprecation.skill_version_id, SkillVersion.id))
+        query.where(not_deprecated(DefinitionKind.SKILL, SkillVersion.id))
         .order_by(SkillVersion.version_no.desc())
         .limit(1)
     )

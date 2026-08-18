@@ -113,6 +113,7 @@ class DefinitionKind(StrEnum):
     SKILL = "skill_version"
     ARTIFACT_DEFINITION = "artifact_definition_version"
     GATE_DEFINITION = "gate_definition_version"
+    TOOL = "tool_definition_version"
 
 
 class DefinitionDeprecation(Base, CreatedAtMixin):
@@ -162,9 +163,19 @@ class DefinitionDeprecation(Base, CreatedAtMixin):
         nullable=True,
         unique=True,
     )
-    """Four real foreign keys rather than a kind-plus-id pair, so the database
-    refuses a deprecation of a version that does not exist. Exactly one is set;
-    ``RESTRICT`` because a deprecated version must outlive its retirement."""
+    tool_definition_version_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("tool_definition_version.id", ondelete="RESTRICT"),
+        nullable=True,
+        unique=True,
+    )
+    """Real foreign keys rather than a kind-plus-id pair, so the database refuses
+    a deprecation of a version that does not exist. Exactly one is set;
+    ``RESTRICT`` because a deprecated version must outlive its retirement.
+
+    Adding a kind means adding a column here, which is deliberate friction: a new
+    sort of definition should have to say so in the schema rather than arrive as
+    an unchecked string."""
 
     deprecated_by_identity: Mapped[str] = mapped_column(nullable=False)
     reason: Mapped[str] = mapped_column(nullable=False)
@@ -174,7 +185,8 @@ class DefinitionDeprecation(Base, CreatedAtMixin):
     __table_args__ = (
         CheckConstraint(
             "num_nonnulls(agent_definition_version_id, skill_version_id, "
-            "artifact_definition_version_id, gate_definition_version_id) = 1",
+            "artifact_definition_version_id, gate_definition_version_id, "
+            "tool_definition_version_id) = 1",
             name="names_exactly_one_version",
         ),
     )
@@ -188,7 +200,9 @@ class DefinitionDeprecation(Base, CreatedAtMixin):
             return DefinitionKind.SKILL
         if self.artifact_definition_version_id is not None:
             return DefinitionKind.ARTIFACT_DEFINITION
-        return DefinitionKind.GATE_DEFINITION
+        if self.gate_definition_version_id is not None:
+            return DefinitionKind.GATE_DEFINITION
+        return DefinitionKind.TOOL
 
     @property
     def subject_id(self) -> UUID:
@@ -198,6 +212,7 @@ class DefinitionDeprecation(Base, CreatedAtMixin):
             self.skill_version_id,
             self.artifact_definition_version_id,
             self.gate_definition_version_id,
+            self.tool_definition_version_id,
         ):
             if candidate is not None:
                 return candidate

@@ -40,6 +40,7 @@ from adw.models.gate import (
 from adw.models.queue import QUEUE_COLUMNS, DispatchJob, JobExecution
 from adw.models.task import MAX_ATTEMPTS, Task, TaskSkillPin
 from adw.models.tenant import Tenant
+from adw.models.tool import ToolDefinition, ToolDefinitionVersion
 
 __all__ = [
     "ANCHOR_HEAD_ID",
@@ -77,6 +78,8 @@ __all__ = [
     "Task",
     "TaskSkillPin",
     "Tenant",
+    "ToolDefinition",
+    "ToolDefinitionVersion",
 ]
 
 TENANT_SCOPED_TABLES = frozenset(
@@ -115,6 +118,8 @@ PLATFORM_SCOPED_TABLES = frozenset(
         "gate_definition",
         "gate_definition_version",
         "definition_deprecation",
+        "tool_definition",
+        "tool_definition_version",
     }
 )
 """Definition tables. Platform-curated, no tenant data, outside tenant scope per D30."""

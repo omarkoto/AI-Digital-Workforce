@@ -76,7 +76,7 @@ model changes nothing about what it may do.
 **Must not.** Be granted by the Agent Runtime, or by anything the model can
 influence. Outlive its task. Be checked anywhere except at the invocation site.
 
-**Blocked** on D10's pre-declared-versus-dynamic question — see §6.
+**Resolved** — see §6.
 
 ### 3.3 Tool Gateway (`adw/services/tool_gateway.py`)
 
@@ -165,41 +165,66 @@ Seven tasks, each independently testable and committable.
 | # | Task | Deliverable |
 |---|---|---|
 | 1 | Tool Registry + descriptors, on the existing definition machinery | A tool version resolves and pins for a task |
-| 2 | Permission grants and revocation (**needs D10 resolved**) | A grant is live, scoped, expiring, and audited |
+| 2 | Permission grants declared at task creation | A grant is live, scoped, expiring, and audited |
 | 3 | Secret Store port + dev adapter | References resolve inside the gateway and nowhere else |
 | 4 | Tool Gateway: the eleven steps, with a stub tool | Every step provable in isolation |
 | 5 | `spreadsheet.read` | A real file becomes evidence |
 | 6 | `tabular.compute` | A computed figure becomes evidence |
 | 7 | Runtime integration + `E-1042` with real tool calls | Proposals dispose instead of being refused |
 
-Tasks 1, 3 and 4 can start immediately. Task 2 is blocked; see below.
+Nothing is blocked. B3 and B4 are resolved below.
 
 ---
 
-## 6. Genuinely blocking decisions
+## 6. The Phase 3 permission policy
 
-**B3 — D10: pre-declared or dynamic grants.** D10 leaves this open and
-recommends pre-declared with explicit escalation. It blocks task 2, which blocks
-tasks 4–7, so it needs deciding first.
+Both of these were open in D10. Both are now decided, and together they **are**
+the permission policy this phase implements.
 
-The trade-off, stated without recommending: **pre-declared** means the full
-permission footprint of an execution is reviewable by a human at plan
-confirmation, which is a strong safety property and fits `PRODUCT.md` §18 — but
-it needs the Orchestrator, which does not exist and is itself blocked on the
-Execution state machine's unresolved transitions. **Dynamic** lets Phase 3
-proceed without an Orchestrator, at the cost of no single moment where a person
-sees everything an execution may do.
+### B3 — Permissions are pre-declared. Accepted 2026-08-18.
 
-There may be a third answer: grants declared per *task* at task creation, which
-`task_service.create_task` already does for definition versions and which needs
-no Orchestrator. That is not what D10 describes, so it is a decision to take
-rather than one to assume.
+**The permission set is fixed when the task is created, and the Tool Gateway
+refuses any tool not in that set.** There are no dynamic grants: a running agent
+cannot acquire a capability it did not start with, by any path, including asking
+for one.
 
-**B4 — D10: in-flight revocation.** What happens to a tool call already running
-when its task ends, its grant expires, or a budget trips. Phase 3's two tools are
-short and idempotent, so a defensible answer is "let it finish, refuse the next
-one" — but that answer stops being defensible the moment an external write
-arrives, and writing it down now is cheaper than discovering it later.
+This is the strong form of D10's separation between instruction and capability.
+An agent's context can be poisoned; its permission set cannot, because nothing
+the model emits reaches the code that writes grants. The gateway's first check is
+therefore a lookup, never a negotiation.
+
+It also settles where grants come from without waiting for the Orchestrator.
+`task_service.create_task` already pins definition versions at creation; grants
+are declared in the same call, on the same transaction, in the same audit event.
+A grant is therefore the tool version's **pin** (I4) as well as its
+authorization — one row answering both "was this allowed?" and "which version
+ran?".
+
+**Consequence, accepted openly:** a task that turns out to need a tool nobody
+declared fails rather than escalating. That is the intended behaviour. Escalation
+is a new task with a new declared set, decided outside the agent.
+
+### B4 — In-flight calls finish; the next one is refused. Accepted 2026-08-18.
+
+**Policy.** When a permission is revoked, the task ends, or the budget is
+exhausted, a tool call **already executing** runs to completion and is recorded
+normally. Every **subsequent** call is refused, recorded as a refusal, and
+returned to the runtime as data.
+
+**Why.** Killing a call mid-flight produces the worst possible record: an action
+that started, touched something, and left no trustworthy account of what it did.
+`CLAUDE.md` §3 would have nothing honest to write. Letting it finish yields
+`succeeded` or `failed` with real evidence either way, and the revocation takes
+effect at the only boundary where it can be enforced cleanly.
+
+The window is bounded by the tool's own timeout, which every descriptor carries
+and the gateway enforces — so "let it finish" is never unbounded.
+
+**The limit of this policy, stated now rather than discovered later.** It is
+defensible because both Phase 3 tools are pure reads. Once a tool performs an
+external write, "let it finish" means a revoked permission still changed the
+world. At that point this decision must be revisited together with open decision
+G (idempotency); neither should be settled without the other.
 
 ## 7. Not blocking, but worth knowing
 
